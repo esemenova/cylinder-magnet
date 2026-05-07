@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Development Protocol &mdash; Cylinder Magnetic Field</title>
+<script>
+  MathJax = {
+    tex: {
+      inlineMath:  [['$', '$'], ['\\(', '\\)']],
+      displayMath: [['$$','$$'], ['\\[','\\]']]
+    },
+    svg: { fontCache: 'global' }
+  };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"
+        async></script>
+<style>
+  :root {
+    --accent : #1a3a6c;
+    --accent2: #284a85;
+    --soft   : #f4f6fa;
+    --rule   : #d6dde7;
+    --code   : #2b2b2b;
+  }
+  html { background:#eef1f5; }
+  body {
+    max-width: 880px;
+    margin: 32px auto;
+    padding: 36px 48px;
+    background: #ffffff;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+    color: #222;
+    font: 15px/1.55 "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  }
+  h1.title {
+    color: var(--accent);
+    font-size: 28px;
+    text-align: center;
+    margin: 0 0 4px 0;
+  }
+  p.subtitle {
+    text-align: center;
+    color: #555;
+    font-size: 16px;
+    font-weight: 500;
+    margin: 0 0 28px 0;
+  }
+  h2 {
+    color: var(--accent);
+    border-bottom: 1px solid var(--rule);
+    padding-bottom: 4px;
+    margin-top: 32px;
+    font-size: 19px;
+  }
+  h3 {
+    color: var(--accent2);
+    font-size: 15.5px;
+    margin-top: 18px;
+  }
+  ul { padding-left: 22px; }
+  li { margin: 4px 0; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 8px 0 12px 0;
+    font-size: 14px;
+  }
+  th, td {
+    border: 1px solid var(--rule);
+    padding: 7px 10px;
+    text-align: left;
+    vertical-align: top;
+  }
+  th {
+    background: var(--accent);
+    color: white;
+    font-weight: 600;
+  }
+  tbody tr:nth-child(even) { background: var(--soft); }
+  pre {
+    background: var(--soft);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 10px 14px;
+    font: 13px/1.45 Consolas, "Courier New", monospace;
+    color: var(--code);
+    overflow-x: auto;
+  }
+  code { font-family: Consolas, "Courier New", monospace; }
+  .filename {
+    background: #eef2f8;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font: 13.5px Consolas, monospace;
+  }
+  .note {
+    background: #fff8e1;
+    border-left: 3px solid #c8a64b;
+    padding: 8px 12px;
+    margin: 10px 0;
+    font-size: 14px;
+  }
+  /* MathJax containers a touch tighter */
+  mjx-container[display="true"] { margin: 0.6em 0 !important; }
+</style>
+</head>
+<body>
+
+<h1 class="title">Development Protocol</h1>
+<p class="subtitle">Magnetic field and gradient of an axially magnetized cylinder</p>
+
+<p>This document records the engineering protocol followed to develop the
+two MATLAB programs in this directory:</p>
+<ul>
+  <li><span class="filename">cylinder_magnet.m</span> &mdash; brute-force
+      surface integral via <code>integral2</code></li>
+  <li><span class="filename">cylinder_magnet_analytic.m</span> &mdash;
+      analytical $\phi'$-integration plus 1-D radial Gauss&ndash;Legendre
+      quadrature</li>
+</ul>
+
+
+<h2>1. Problem statement</h2>
+<p>Compute the magnetic field $\mathbf{B}(x,y,z)$ and its full gradient
+tensor $\partial B_\alpha/\partial x_\beta$ outside a uniformly axially
+magnetized cylinder of radius $R$, length $L$ and magnetization
+$\mathbf{M}=M_0\,\hat{z}$ with $\mu_0 M_0 = 1\,\mathrm{T}$, axis aligned
+with the $Z$-axis.</p>
+
+<p>Required outputs:</p>
+<ul>
+  <li>1-D on-axis profile of $B_z$ for validation;</li>
+  <li>2-D maps of $B_x$, $B_y$, $B_z$ and the gradient tensor in an XY
+      plane at a chosen height $z=z_0$ above the magnet;</li>
+  <li>visualization of in-plane field direction and gradient direction.</li>
+</ul>
+
+
+<h2>2. Physics formulation</h2>
+
+<h3>2.1 Scalar magnetic potential</h3>
+<p>For uniform magnetization the body is replaced by surface magnetic
+charges with density $\sigma_m=\mathbf{M}\!\cdot\!\hat{\mathbf{n}}$.
+Only the two flat end faces carry charge for axial magnetization
+(top: $z'=+L/2$, $\sigma=+M_0$; bottom: $z'=-L/2$, $\sigma=-M_0$).</p>
+
+\[
+\varphi_m(\mathbf{r})\;=\;\frac{1}{4\pi}\,
+   \iint_{S}\frac{\sigma_m(\mathbf{r}')}{|\mathbf{r}-\mathbf{r}'|}\,dS'.
+\]
+
+<h3>2.2 Field and gradient</h3>
+<p>Outside the magnet $\mathbf{H}=-\nabla\varphi_m$ and
+$\mathbf{B}=\mu_0\mathbf{H}$. Both $\mathbf{B}$ and the tensor
+$\partial B_\alpha/\partial x_\beta$ are obtained by differentiating
+<em>under the integral sign</em> analytically:</p>
+
+\[
+H_\alpha\;=\;\frac{\sigma}{4\pi}
+   \iint_{S}\frac{\alpha-\alpha'}{d^{3}}\,dS',
+\]
+
+\[
+\frac{\partial H_\alpha}{\partial x_\beta}\;=\;
+\frac{\sigma}{4\pi}\iint_{S}\!\left[\,
+   -\frac{\delta_{\alpha\beta}}{d^{3}}+
+    \frac{3(\alpha-\alpha')(\beta-\beta')}{d^{5}}\,\right]dS'.
+\]
+
+<h3>2.3 Validation references</h3>
+<p><strong>Near / intermediate field:</strong> closed form on the
+cylinder axis ($\rho=0$),</p>
+
+\[
+B_z(0,0,z)\;=\;\frac{\mu_0 M_0}{2}\!\left[
+\frac{z+L/2}{\sqrt{R^{2}+(z+L/2)^{2}}} -
+\frac{z-L/2}{\sqrt{R^{2}+(z-L/2)^{2}}}\right].
+\]
+
+<p><strong>Far field:</strong> point-dipole formula with moment
+$\mathbf{m}=M_0\,\pi R^{2} L\,\hat{z}$,</p>
+
+\[
+\mathbf{B}_{\mathrm{dip}}(\mathbf{r})\;=\;
+   \frac{\mu_0}{4\pi}\,
+   \frac{3(\mathbf{m}\!\cdot\!\hat{r})\hat{r}-\mathbf{m}}{r^{3}}.
+\]
+
+
+<h2>3. Implementation strategy</h2>
+<p>Two implementations were produced, each a logical step of the same plan.</p>
+
+<h3>3.1 Brute-force (<span class="filename">cylinder_magnet.m</span>)</h3>
+<ul>
+  <li>Each of the three field components and each of the five
+      independent gradient-tensor components is computed by
+      <code>integral2</code> per observation point on the $(x,y)$ grid.</li>
+  <li>Total: $8\times N^{2}$ adaptive 2-D integrations.</li>
+  <li>Pros: minimal physics derivation, robust.</li>
+  <li>Cons: minutes for a $50\times 50$ grid; not useful for design
+      iteration.</li>
+</ul>
+
+<h3>3.2 Analytical reduction
+       (<span class="filename">cylinder_magnet_analytic.m</span>)</h3>
+
+<p><strong>Step 1 &mdash; analytical $\phi'$ integration.</strong> The
+$2\pi$ integral over the disc parameter $\phi'$ is evaluated in closed
+form; the result is expressed in terms of the complete elliptic integrals
+$K(m)$ and $E(m)$ with parameter</p>
+
+\[
+m(r',\rho,\zeta)\;=\;\frac{4\,r'\,\rho}{(r'+\rho)^{2}+\zeta^{2}}.
+\]
+
+<p><strong>Step 2 &mdash; closed-form integrands.</strong> The remaining
+integrand depends only on $r'$, $\rho$, $\zeta$:</p>
+
+\[
+H_z(\rho,\zeta)\;=\;\frac{\sigma\,\zeta}{\pi}\,
+\int_{0}^{R}\frac{r'\,E(m)}
+{[(r'-\rho)^{2}+\zeta^{2}]\,\sqrt{(r'+\rho)^{2}+\zeta^{2}}}\,dr',
+\]
+
+\[
+H_\rho(\rho,\zeta)\;=\;\frac{\sigma}{2\pi\rho}\,
+\int_{0}^{R}\!\!
+\frac{r'\,[(\rho^{2}-r'^{2}-\zeta^{2})\,E(m)+
+((r'-\rho)^{2}+\zeta^{2})\,K(m)]}
+{[(r'-\rho)^{2}+\zeta^{2}]\,\sqrt{(r'+\rho)^{2}+\zeta^{2}}}\,dr'.
+\]
+
+<p><strong>Step 3 &mdash; vectorized 1-D quadrature.</strong> The radial
+integral on $[0,R]$ is evaluated by a single 96-point Gauss&ndash;Legendre
+rule (Golub&ndash;Welsch), broadcast across the entire observation grid as
+one matrix product.</p>
+
+<p><strong>Step 4 &mdash; gradient tensor.</strong> Six perturbation
+evaluations of the analytic field at observation points $x\pm h$,
+$y\pm h$, $z\pm h$ give the gradient tensor by central differences. The
+field is quadrature-noiseless, so a step $h=10^{-6}\,\mathrm{m}$ gives
+$\sim 10^{-9}$ accuracy.</p>
+
+<p>Speed-up vs brute force: $\approx 10^{3}$.</p>
+
+
+<h2>4. Numerical-precision protocol</h2>
+
+<table>
+<thead>
+<tr><th style="width:38%">Issue</th><th>Mitigation</th></tr>
+</thead>
+<tbody>
+<tr>
+  <td>$K(m)$ logarithmic singularity at $m\to 1$</td>
+  <td>clamp $m\leq 1-10^{-14}$ (rim only; observation points stay outside
+      the magnet)</td>
+</tr>
+<tr>
+  <td>$\rho=0$ in the $1/\rho$ factor of $H_\rho$</td>
+  <td>guard $\max(\rho,10^{-30})$; then force
+      $H_\rho(\rho<10^{-12} R)=0$</td>
+</tr>
+<tr>
+  <td>$0/0$ in the Cartesian projection on the axis</td>
+  <td>mask $\rho>\varepsilon$, set $B_x=B_y=0$ on the axis</td>
+</tr>
+<tr>
+  <td>Integration singularity at the rim</td>
+  <td>observation plane lifted by $z_0^{\mathrm{add}}$ (default 1 mm)
+      above the magnet</td>
+</tr>
+</tbody>
+</table>
+
+
+<h2>5. Validation protocol</h2>
+<p>Performed each time the analytic core is modified.</p>
+
+<p><strong>1. On-axis comparison</strong> at 200 log-spaced points
+$z\in[\,b+10^{-4},\,20L\,]$:</p>
+<ul>
+  <li>numerical (1-D Gauss&ndash;Legendre) vs exact closed form &mdash;
+      must agree to relative $10^{-9}$ over the full range;</li>
+  <li>numerical vs dipole far-field &mdash; agree only for $z\gg L$; the
+      log-log error plot must asymptote to a $1/r^{4}$-like decay of the
+      residual.</li>
+</ul>
+
+<p><strong>2. Divergence check</strong> on the 2-D grid: trace of the
+gradient tensor</p>
+\[
+\nabla\!\cdot\!\mathbf{B}\;=\;
+\partial_x B_x+\partial_y B_y+\partial_z B_z
+\]
+<p>plotted alongside the diagonal components. In source-free conditions
+the resulting map should be numerical noise (orders of magnitude below
+the component magnitudes).</p>
+
+<p><strong>3. Cross-check between programs</strong>: at a small set of
+grid points, the brute-force script and the analytic script must agree
+to $10^{-8}$ relative tolerance.</p>
+
+
+<h2>6. Visualization protocol</h2>
+
+<table>
+<thead>
+<tr><th style="width:8%">Figure</th><th>Content</th></tr>
+</thead>
+<tbody>
+<tr><td style="text-align:center">1</td>
+    <td>On-axis $B_z$ and its relative error vs both references
+        (log&ndash;log, 2 panels)</td></tr>
+<tr><td style="text-align:center">2</td>
+    <td>$B_x$, $B_y$ as <em>pcolor</em> maps, $B_z$ as <em>surf</em>,
+        common color limits, axes in cm</td></tr>
+<tr><td style="text-align:center">3</td>
+    <td>$B_z$ color map with quiver of normalized in-plane $(B_x,B_y)$
+        and magnet outline</td></tr>
+<tr><td style="text-align:center">4</td>
+    <td>Five gradient components plus
+        $\nabla\!\cdot\!\mathbf{B}$ (sanity check) on a $2\times 3$
+        tiled layout</td></tr>
+<tr><td style="text-align:center">5</td>
+    <td>Three components of $\nabla|\mathbf{B}|$ obtained from the
+        gradient tensor and $\mathbf{B}$ itself</td></tr>
+</tbody>
+</table>
+
+<p>All plots use docked windows, white background, <em>jet</em> colormap
+for the field components, default colormap for the gradients.</p>
+
+
+<h2>7. Project parameters (current run)</h2>
+<pre>R     = 35 mm        cylinder radius
+L     = 60 mm        cylinder length
+Br    = 1.0 T        remanent flux density
+z0add = 1 mm         distance above the top face for the XY map
+N     = 80           XY grid resolution (analytic version)
+Nq    = 96           Gauss-Legendre nodes on [0, R]
+hd    = 1e-6 m       central-difference step for the gradient tensor</pre>
+
+
+<h2>8. Reproducibility</h2>
+<p>Both scripts are self-contained; no toolboxes beyond base MATLAB are
+required (<code>ellipke</code> ships with the core product). Running each
+script from a clean session reproduces all figures. The brute-force
+script is kept as the slow but transparent reference implementation; the
+analytic script is the one used for production runs.</p>
+
+</body>
+</html>
