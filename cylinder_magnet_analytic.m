@@ -1,6 +1,12 @@
 %% Magnetic field of a uniformly axially magnetized cylinder
 %  Option A : analytical reduction of the surface integrals.
 %
+%  Geometry
+%  --------
+%  The cylinder is placed BELOW the XY plane.  Its top face lies at
+%  z = 0 and its bottom face at z = -L (the cylinder occupies -L <= z <= 0).
+%  Observation planes are at z = h above the top face.
+%
 %  Method
 %  ------
 %  Each end face of the cylinder is a uniformly charged disc.  The
@@ -14,33 +20,11 @@
 %       Gauss-Legendre quadrature, fully vectorised over the whole
 %       observation grid.
 %
-%  This replaces the per-point integral2() of the brute-force script
-%  by a single matrix product, giving a speed-up of ~10^3.
+%  The gradient tensor is obtained by central differences on the
+%  analytical (quadrature-noiseless) field.
 %
-%  Field formulas used (derived from the surface integral):
-%
-%    H_z(rho,zeta) = (sigma/pi) * zeta *
-%                    int_0^R r' E(m) / [ ((r'-rho)^2+zeta^2) *
-%                                        sqrt((r'+rho)^2+zeta^2) ] dr'
-%
-%    H_rho(rho,zeta) = sigma/(2*pi*rho) *
-%        int_0^R r' / [ ((r'-rho)^2+zeta^2)*sqrt((r'+rho)^2+zeta^2) ] *
-%             [ (rho^2 - r'^2 - zeta^2) E(m)
-%             + ((r'-rho)^2 + zeta^2)  K(m) ] dr'
-%
-%  with m = 4 r' rho / ((r'+rho)^2 + zeta^2).
-%
-%  The cylinder field is the sum of the two face contributions
-%   (top  face : z' = +L/2,  sigma = +M0
-%    bot  face : z' = -L/2,  sigma = -M0).
-%
-%  The gradient tensor d B_a / d x_b is obtained by central differences
-%  taken on the analytical (quadrature-noiseless) field with a small step
-%  h ~ 1e-6 m, accuracy ~1e-9.
-%
-%  Validation:
-%   - on-axis closed form  (near & intermediate field)
-%   - point-dipole formula (far field)
+%  Validation: on-axis closed form (near & intermediate field)
+%              point-dipole formula (far field).
 % =========================================================================
 
 clear; clc; close all;
@@ -51,8 +35,14 @@ Br    = 1.0;
 M0    = Br/mu0;
 R     = 35e-3;
 L     = 60e-3;
-b     = L/2;
-z0add = 1e-3;
+
+% --- Geometry: top face at z = 0, bottom face at z = -L
+zTop  = 0;
+zBot  = zTop - L;          % = -L
+zCtr  = zTop - L/2;        % cylinder center, used by the dipole formula
+
+% --- Observation distances ABOVE the top face
+hList = [1e-3, 2e-3];      % 1 mm and 2 mm
 
 % Gauss-Legendre nodes/weights for the radial integral on [0,R]
 Nq          = 96;
@@ -60,144 +50,189 @@ Nq          = 96;
 rGL = rGL(:);  wGL = wGL(:);
 
 %% --------------------- 1. On-axis validation ----------------------------
-zAx  = linspace(b+1e-4, 20*L, 200).';
-[~, ~, Bz_n] = Bcyl(zeros(size(zAx)), zeros(size(zAx)), zAx, R, b, M0, rGL, wGL);
+zAx  = linspace(zTop + 1e-4, zTop + 20*L, 200).';
+[~, ~, Bz_n] = Bcyl(zeros(size(zAx)), zeros(size(zAx)), zAx, R, L, M0, zTop, rGL, wGL);
 
-Bz_a = (mu0*M0/2) * ( (zAx+b)./sqrt(R^2+(zAx+b).^2) - ...
-                      (zAx-b)./sqrt(R^2+(zAx-b).^2) );
+% Exact on-axis closed form for cylinder occupying [zBot, zTop]
+Bz_a = (mu0*M0/2) * ( (zAx - zBot)./sqrt(R^2 + (zAx - zBot).^2) - ...
+                      (zAx - zTop)./sqrt(R^2 + (zAx - zTop).^2) );
+
+% Dipole far-field (cylinder centred at zCtr)
 m_dip = M0 * pi*R^2 * L;
-Bz_d  = mu0*m_dip ./ (2*pi*abs(zAx).^3);
+Bz_d  = mu0*m_dip ./ (2*pi*abs(zAx - zCtr).^3);
 
 figure('Name','On-axis validation','Color','w');
 set(gcf,'WindowStyle','docked','Color',[1 1 1]);
 subplot(2,1,1);
-loglog(zAx/L, abs(Bz_n),'k-' ,'LineWidth',1.6); hold on;
-loglog(zAx/L, abs(Bz_a),'r--','LineWidth',1.2);
-loglog(zAx/L, abs(Bz_d),'b:' ,'LineWidth',1.4);
-grid on; xlabel('z / L'); ylabel('|B_z|  [T]');
+loglog((zAx - zTop)/L, abs(Bz_n),'k-' ,'LineWidth',1.6); hold on;
+loglog((zAx - zTop)/L, abs(Bz_a),'r--','LineWidth',1.2);
+loglog((zAx - zTop)/L, abs(Bz_d),'b:' ,'LineWidth',1.4);
+grid on; xlabel('(z - z_{top}) / L'); ylabel('|B_z|  [T]');
 legend('analytical (1-D Gauss-Legendre)','on-axis closed form', ...
        'dipole far field','Location','southwest');
-title('B_z on the cylinder axis');
+title('B_z above the cylinder axis');
 
 subplot(2,1,2);
-loglog(zAx/L, abs(Bz_n - Bz_a)./abs(Bz_a),'r-','LineWidth',1.4); hold on;
-loglog(zAx/L, abs(Bz_n - Bz_d)./abs(Bz_d),'b-','LineWidth',1.4);
-grid on; xlabel('z / L'); ylabel('relative error');
+loglog((zAx - zTop)/L, abs(Bz_n - Bz_a)./abs(Bz_a),'r-','LineWidth',1.4); hold on;
+loglog((zAx - zTop)/L, abs(Bz_n - Bz_d)./abs(Bz_d),'b-','LineWidth',1.4);
+grid on; xlabel('(z - z_{top}) / L'); ylabel('relative error');
 legend('vs on-axis analytic (exact)','vs dipole approximation', ...
        'Location','east');
 title('Relative error of the numerical solution');
 
-%% --------------------- 2. XY-plane field map at z = z_0 -----------------
-z0   = b + z0add;
+%% --------------------- 2. XY-plane field maps at z = h ------------------
 xMax = R + 5e-3;
 N    = 80;                       % grid resolution (NxN)
-
-xv = linspace(-xMax, xMax, N);
-yv = linspace(-xMax, xMax, N);
+xv   = linspace(-xMax, xMax, N);
+yv   = linspace(-xMax, xMax, N);
 [X,Y] = meshgrid(xv, yv);
-Z     = z0*ones(size(X));
 
-fprintf('B field on %dx%d grid ... ', N, N); tic;
-[Bx, By, Bz] = Bcyl(X, Y, Z, R, b, M0, rGL, wGL);
-fprintf('%.3f s\n', toc);
+hd = 1e-6;                       % central-difference step
+nH = numel(hList);
+res(nH) = struct();              % preallocate result store
 
-%% Gradient tensor : central differences on the (analytic) B
-hd = 1e-6;
-fprintf('Gradient tensor ... '); tic;
-[Bx_xp, By_xp, Bz_xp] = Bcyl(X+hd, Y,    Z,    R, b, M0, rGL, wGL);
-[Bx_xm, By_xm, Bz_xm] = Bcyl(X-hd, Y,    Z,    R, b, M0, rGL, wGL);
-[Bx_yp, By_yp, Bz_yp] = Bcyl(X,    Y+hd, Z,    R, b, M0, rGL, wGL);
-[Bx_ym, By_ym, Bz_ym] = Bcyl(X,    Y-hd, Z,    R, b, M0, rGL, wGL);
-[~,     ~,     Bz_zp] = Bcyl(X,    Y,    Z+hd, R, b, M0, rGL, wGL);
-[~,     ~,     Bz_zm] = Bcyl(X,    Y,    Z-hd, R, b, M0, rGL, wGL);
+% --- compute fields and gradients for every requested height -------------
+for ih = 1:nH
+    h  = hList(ih);
+    z0 = zTop + h;
+    Z  = z0*ones(size(X));
 
-dBx_dx = (Bx_xp - Bx_xm)/(2*hd);
-dBx_dy = (Bx_yp - Bx_ym)/(2*hd);
-dBy_dy = (By_yp - By_ym)/(2*hd);
-dBz_dx = (Bz_xp - Bz_xm)/(2*hd);
-dBz_dy = (Bz_yp - Bz_ym)/(2*hd);
-dBz_dz = (Bz_zp - Bz_zm)/(2*hd);
-fprintf('%.3f s\n', toc);
+    fprintf('\n=== h = %.1f mm ===\n', h*1e3);
+    fprintf('B field on %dx%d grid ... ', N, N); tic;
+    [Bx, By, Bz] = Bcyl(X, Y, Z, R, L, M0, zTop, rGL, wGL);
+    fprintf('%.3f s\n', toc);
 
-%% --------------------- 3. Plots -----------------------------------------
-% Figure A : Bx, By as 2D maps, Bz as 3D surface
+    fprintf('Gradient tensor ... '); tic;
+    [Bx_xp, By_xp, Bz_xp] = Bcyl(X+hd, Y,    Z,    R, L, M0, zTop, rGL, wGL);
+    [Bx_xm, By_xm, Bz_xm] = Bcyl(X-hd, Y,    Z,    R, L, M0, zTop, rGL, wGL);
+    [Bx_yp, By_yp, Bz_yp] = Bcyl(X,    Y+hd, Z,    R, L, M0, zTop, rGL, wGL);
+    [Bx_ym, By_ym, Bz_ym] = Bcyl(X,    Y-hd, Z,    R, L, M0, zTop, rGL, wGL);
+    [~,     ~,     Bz_zp] = Bcyl(X,    Y,    Z+hd, R, L, M0, zTop, rGL, wGL);
+    [~,     ~,     Bz_zm] = Bcyl(X,    Y,    Z-hd, R, L, M0, zTop, rGL, wGL);
+
+    res(ih).h      = h;
+    res(ih).Bx     = Bx;
+    res(ih).By     = By;
+    res(ih).Bz     = Bz;
+    res(ih).dBx_dx = (Bx_xp - Bx_xm)/(2*hd);
+    res(ih).dBx_dy = (Bx_yp - Bx_ym)/(2*hd);
+    res(ih).dBy_dy = (By_yp - By_ym)/(2*hd);
+    res(ih).dBz_dx = (Bz_xp - Bz_xm)/(2*hd);
+    res(ih).dBz_dy = (Bz_yp - Bz_ym)/(2*hd);
+    res(ih).dBz_dz = (Bz_zp - Bz_zm)/(2*hd);
+    fprintf('%.3f s\n', toc);
+end
+
+Xc   = X*1e2;  Yc = Y*1e2;       % grid in cm for the maps
+cLim = [-0.5 0.5];
+th   = linspace(0,2*pi,200);
+
+% ------------------------------------------------------------------ Fig 2
+% B components for both heights side-by-side  (rows = component, cols = h)
 figure('Name','B components','Color','w');
 set(gcf,'WindowStyle','docked','Color',[1 1 1]);
+tiledlayout(3, nH, 'Padding','compact','TileSpacing','compact');
 
-Xc = X*1e2; Yc = Y*1e2;
-cLim = [-0.5 0.5];
+% Row 1 : Bx
+for ih = 1:nH
+    nexttile;
+    pcolor(Xc, Yc, res(ih).Bx); shading interp;
+    axis equal tight; colormap(jet); caxis(cLim);
+    cb = colorbar; cb.Label.String = 'B_x (T)';
+    xlabel('x (cm)'); ylabel('y (cm)');
+    title(sprintf('h = %g mm', res(ih).h*1e3));
+end
+% Row 2 : By
+for ih = 1:nH
+    nexttile;
+    pcolor(Xc, Yc, res(ih).By); shading interp;
+    axis equal tight; colormap(jet); caxis(cLim);
+    cb = colorbar; cb.Label.String = 'B_y (T)';
+    xlabel('x (cm)'); ylabel('y (cm)');
+end
+% Row 3 : Bz as 3D surface
+for ih = 1:nH
+    nexttile;
+    surf(Xc, Yc, res(ih).Bz, 'EdgeColor','none');
+    colormap(jet); caxis(cLim);
+    cb = colorbar; cb.Label.String = 'B_z (T)';
+    xlabel('x (cm)'); ylabel('y (cm)'); zlabel('B_z (T)');
+    view(-37.5, 30); axis tight;
+end
+sgtitle('B components','FontWeight','bold');
 
-tiledlayout(3,1,'Padding','compact','TileSpacing','compact');
-
-nexttile;
-pcolor(Xc, Yc, Bx); shading interp;
-axis equal tight; colormap(jet); caxis(cLim);
-cb = colorbar; cb.Label.String = 'B_x (T)';
-xlabel('x (cm)'); ylabel('y (cm)');
-
-nexttile;
-pcolor(Xc, Yc, By); shading interp;
-axis equal tight; colormap(jet); caxis(cLim);
-cb = colorbar; cb.Label.String = 'B_y (T)';
-xlabel('x (cm)'); ylabel('y (cm)');
-
-nexttile;
-surf(Xc, Yc, Bz, 'EdgeColor','none');
-colormap(jet); caxis(cLim);
-cb = colorbar; cb.Label.String = 'B_z (T)';
-xlabel('x (cm)'); ylabel('y (cm)'); zlabel('B_z (T)');
-view(-37.5, 30); axis tight;
-
-sgtitle(sprintf('h = %g mm', z0add*1e3),'FontWeight','bold');
-
-% Figure B : in-plane field direction
+% ------------------------------------------------------------------ Fig 3
+% In-plane field direction for both heights
 figure('Name','In-plane field direction','Color','w');
 set(gcf,'WindowStyle','docked','Color',[1 1 1]);
-contourf(X*1e3, Y*1e3, Bz, 20, 'LineStyle','none'); hold on;
-th = linspace(0,2*pi,200);
-plot(R*cos(th)*1e3, R*sin(th)*1e3, 'w--','LineWidth',1.2);
-mag = hypot(Bx,By); mag(mag==0) = 1;
-quiver(X*1e3, Y*1e3, Bx./mag, By./mag, 0.5, 'k', 'LineWidth', 0.7);
-axis equal tight; colorbar;
-xlabel('x [mm]'); ylabel('y [mm]');
-title(sprintf('B_z (color) and (B_x,B_y) direction, z = %.2f mm', z0*1e3));
+tiledlayout(1, nH, 'Padding','compact','TileSpacing','compact');
+s = 1:6:N;     % every 4th point
+for ih = 1:nH
+    nexttile;
+    contourf(X*1e3, Y*1e3, res(ih).Bz, 20, 'LineStyle','none'); hold on;
+    plot(R*cos(th)*1e3, R*sin(th)*1e3, 'w--','LineWidth',1.2);
+    mg = hypot(res(ih).Bx, res(ih).By); mg(mg==0) = 1;
+    
+    quiver(X(s,s)*1e3, Y(s,s)*1e3, res(ih).Bx(s,s)./mg(s,s), res(ih).By(s,s)./mg(s,s), ...
+       0.8, 'w','LineWidth',2);
 
-% Figure C : gradient components and divergence check
-figure('Name','Gradient components','Color','w');
-set(gcf,'WindowStyle','docked','Color',[1 1 1]);
-tiledlayout(2,3,'Padding','compact','TileSpacing','compact');
-plotMap(X,Y,dBx_dx,'\partial B_x/\partial x  [T/m]');
-plotMap(X,Y,dBy_dy,'\partial B_y/\partial y  [T/m]');
-plotMap(X,Y,dBz_dz,'\partial B_z/\partial z  [T/m]');
-plotMap(X,Y,dBz_dx,'\partial B_z/\partial x  [T/m]');
-plotMap(X,Y,dBz_dy,'\partial B_z/\partial y  [T/m]');
-plotMap(X,Y,dBx_dx+dBy_dy+dBz_dz,'div B (should be ~ 0)  [T/m]');
-sgtitle(sprintf('Field gradient components at z = %.2f mm', z0*1e3));
+    %quiver(X*1e3, Y*1e3, res(ih).Bx./mg, res(ih).By./mg, 1.8, 'k','LineWidth',1.0);
+    axis equal tight; colorbar; colormap(jet);
+    xlabel('x [mm]'); ylabel('y [mm]');
+    title(sprintf('h = %g mm', res(ih).h*1e3));
+end
+sgtitle('B_z (color) and in-plane (B_x,B_y) direction','FontWeight','bold');
 
-% Figure D : gradient components of |B|
-Bmag    = sqrt(Bx.^2 + By.^2 + Bz.^2);
-dBmag_dx = (Bx.*dBx_dx + By.*dBx_dy + Bz.*dBz_dx) ./ Bmag;
-dBmag_dy = (Bx.*dBx_dy + By.*dBy_dy + Bz.*dBz_dy) ./ Bmag;
-dBmag_dz = (Bx.*dBz_dx + By.*dBz_dy + Bz.*dBz_dz) ./ Bmag;
+% ------------------------------------------------------------------ Fig 4
+% Gradient components per height (5 components + div B), still one figure
+% per distance because of panel count.
+for ih = 1:nH
+    figure('Name',sprintf('Gradient components, h = %g mm', res(ih).h*1e3),...
+           'Color','w');
+    set(gcf,'WindowStyle','docked','Color',[1 1 1]);
+    tiledlayout(2,3,'Padding','compact','TileSpacing','compact');
+    plotMap(X,Y,res(ih).dBx_dx,'\partial B_x/\partial x  [T/m]');
+    plotMap(X,Y,res(ih).dBy_dy,'\partial B_y/\partial y  [T/m]');
+    plotMap(X,Y,res(ih).dBz_dz,'\partial B_z/\partial z  [T/m]');
+    plotMap(X,Y,res(ih).dBz_dx,'\partial B_z/\partial x  [T/m]');
+    plotMap(X,Y,res(ih).dBz_dy,'\partial B_z/\partial y  [T/m]');
+    plotMap(X,Y,res(ih).dBx_dx+res(ih).dBy_dy+res(ih).dBz_dz, ...
+            'div B (should be ~ 0)  [T/m]');
+    sgtitle(sprintf('Field gradient components, h = %g mm', res(ih).h*1e3));
+end
+
+% ------------------------------------------------------------------ Fig 5
+% Gradient components of |B| for both heights (rows = h, cols = component)
 figure('Name','Gradient of |B|','Color','w');
 set(gcf,'WindowStyle','docked','Color',[1 1 1]);
-tiledlayout(1,3,'Padding','compact','TileSpacing','compact');
-plotMap(X,Y,dBmag_dx,'\partial |B| / \partial x  [T/m]');
-plotMap(X,Y,dBmag_dy,'\partial |B| / \partial y  [T/m]');
-plotMap(X,Y,dBmag_dz,'\partial |B| / \partial z  [T/m]');
-sgtitle(sprintf('Gradient of |B| at z = %.2f mm', z0*1e3));
+tiledlayout(nH, 3, 'Padding','compact','TileSpacing','compact');
+for ih = 1:nH
+    Bxh = res(ih).Bx; Byh = res(ih).By; Bzh = res(ih).Bz;
+    Bmag = sqrt(Bxh.^2 + Byh.^2 + Bzh.^2);
+    dBmag_dx = (Bxh.*res(ih).dBx_dx + Byh.*res(ih).dBx_dy + Bzh.*res(ih).dBz_dx)./Bmag;
+    dBmag_dy = (Bxh.*res(ih).dBx_dy + Byh.*res(ih).dBy_dy + Bzh.*res(ih).dBz_dy)./Bmag;
+    dBmag_dz = (Bxh.*res(ih).dBz_dx + Byh.*res(ih).dBz_dy + Bzh.*res(ih).dBz_dz)./Bmag;
+
+    htag = sprintf('h = %g mm', res(ih).h*1e3);
+    plotMap(X,Y,dBmag_dx,['\partial |B| / \partial x  [T/m],  ' htag]);
+    plotMap(X,Y,dBmag_dy,['\partial |B| / \partial y  [T/m],  ' htag]);
+    plotMap(X,Y,dBmag_dz,['\partial |B| / \partial z  [T/m],  ' htag]);
+end
+sgtitle('Gradient of |B|','FontWeight','bold');
 
 % =========================================================================
 %                            Local functions
 % =========================================================================
-function [Bx, By, Bz] = Bcyl(x, y, z, R, b, M0, rGL, wGL)
+function [Bx, By, Bz] = Bcyl(x, y, z, R, L, M0, zTop, rGL, wGL)
 % Closed-form (analytic) magnetic field of a uniformly axially magnetized
-% cylinder, vectorised over arbitrary x,y,z arrays.
-mu0 = 4*pi*1e-7;
+% cylinder.  Top face at z = zTop, bottom face at z = zTop - L.
+% Vectorised over arbitrary x,y,z arrays.
+mu0  = 4*pi*1e-7;
+zBot = zTop - L;
 
-% top and bottom face contributions (charge density M0 and -M0)
-[Brho_t, Bz_t] = faceField(x, y, z - b, R, +M0, rGL, wGL);
-[Brho_b, Bz_b] = faceField(x, y, z + b, R, -M0, rGL, wGL);
+% top and bottom face contributions (charge density +M0 and -M0)
+[Brho_t, Bz_t] = faceField(x, y, z - zTop, R, +M0, rGL, wGL);
+[Brho_b, Bz_b] = faceField(x, y, z - zBot, R, -M0, rGL, wGL);
 
 Brho = mu0 * (Brho_t + Brho_b);
 Bz   = mu0 * (Bz_t   + Bz_b  );
@@ -213,6 +248,16 @@ cosphi(nz) = x(nz) ./ rho(nz);
 sinphi(nz) = y(nz) ./ rho(nz);
 Bx = Brho .* cosphi;
 By = Brho .* sinphi;
+
+% On-axis special case: Bx = By = 0 by symmetry; use closed-form B_z.
+mask = rho < eps_r;
+if any(mask(:))
+    Bx(mask) = 0;
+    By(mask) = 0;
+    zh = z(mask);
+    Bz(mask) = (mu0*M0/2) * ( (zh - zBot)./sqrt(R^2 + (zh - zBot).^2) - ...
+                              (zh - zTop)./sqrt(R^2 + (zh - zTop).^2) );
+end
 end
 
 function [Brho, Bz] = faceField(x, y, zeta, R, sigma, rGL, wGL)
